@@ -1,0 +1,50 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use FindBin;
+use Data::Dump;
+
+# get options here, make $args available to all snippets
+require Getopt::Long;
+my $getopt = Getopt::Long::Parser->new(
+  config => [qw/gnu_getopt bundling_override no_ignore_case pass_through/]
+);
+my $args = {
+  check_blockers => undef,
+};
+$getopt->getoptions($args, qw/
+  check_blockers|check-blockers
+/);
+if (@ARGV) {
+  warn "\nIgnoring unrecognized option(s): @ARGV\n\n";
+}
+
+exit 0 unless $args->{check_blockers};
+
+my %flags;
+my $todo_file = 'lib/DBIx/Class/Manual/Dev/TODO.pod';
+my $pod = do { local(@ARGV, $/) = ("$FindBin::Bin/../$todo_file"); <> };
+while($pod =~ /^=head\d+\s+([^\n]+?)\n\n^=over(.+?)^=back/xmsg) {
+    my($todo_name, $raw_flags) = ($1, $2);
+    while ($raw_flags =~ /
+              ^(Blocker|BL|
+               Regression|RG|
+               Depends|DEP|
+               RT_Entry|RT|
+               Needs_Specification|NS|
+               Request_For_Comments|RFC|
+               Signed_Off|SIG)(?::(.*?))?\n\n/xmsg
+      ) {
+        my ($flag, $value) = ($1, $2);
+        if(defined $value) {
+            push @{$flags{$todo_name}{$flag}}, $value
+        } else {
+            $flags{$todo_name}{$flag} ||= [];
+        }
+    }
+}
+
+exit 1 if keys %flags;
+
+exit 0;
