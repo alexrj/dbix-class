@@ -49,6 +49,14 @@ Revision history for DBIx::Class
         - The schema-resultsource entanglement is now much more robust
           under threads
         - t/53lean_startup.t adjusted for new 5.15.x base.pm behavior
+        - Loosen primary key requirement restriction on TEXT/IMAGE operations
+          for Sybase ASE to unique constraints
+        - Support TEXT/IMAGE UPDATE operations with TEXT queries in WHERE for
+          Sybase ASE
+        - Support BLOB/CLOB operations for Oracle with quoting enabled (by
+          switching to ora_auto_lob => 0)
+        - Support BLOB/CLOB operations for Oracle on DBD::Oracle version 1.23
+        - Support insert_bulk with BLOBs/CLOBs for Oracle
 
     * Misc
         - Centralized leak-checks for all instances of DBICTest::Schema
