@@ -255,6 +255,7 @@ sub insert {
 # optimized due to hotttnesss
 #  my ($self, $table, $data, $options) = @_;
 
+  local $_[0]->{FROM} = $_[1];
   # SQLA will emit INSERT INTO $table ( ) VALUES ( )
   # which is sadly understood only by MySQL. Change default behavior here,
   # until SQLA2 comes with proper dialect support
@@ -274,6 +275,17 @@ sub insert {
   }
 
   next::method(@_);
+}
+
+sub update {
+  local $_[0]->{FROM} = $_[1];
+
+  shift->next::method(@_);
+}
+
+sub delete {
+
+  shift->next::method(@_);
 }
 
 sub _recurse_fields {
