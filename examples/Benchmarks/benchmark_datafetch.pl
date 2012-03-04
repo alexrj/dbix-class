@@ -31,7 +31,7 @@ my $sql = sprintf ('SELECT %s FROM %s %s',
   $rs->_resolved_attrs->{alias},
 );
 
-for (1,10,20,50,200,2500,10000) {
+for (1,10,20,50,100,150,200,500,1000,2500,10000) {
   $rs->delete;
   $rs->populate ([ map { { name => "Art_$_"} } (1 .. $_) ]);
   print "\nRetrieval of $_ rows\n";
