@@ -1789,6 +1789,7 @@ sub _rs_update_delete {
     my ($sql, @bind) = do {
       my $sqla = $rsrc->storage->sql_maker;
       local $sqla->{_dequalify_idents} = 1;
+      local $sqla->{FROM} = $rsrc;
       $sqla->_recurse_where($self->{cond});
     } if $self->{cond};
 

@@ -95,7 +95,7 @@ sub __max_int () { 0x7FFFFFFF };
 
 # poor man's de-qualifier
 sub _quote {
-  my $col = ( $_[0]{_dequalify_idents} and ! ref $_[1] )
+  my ($col) = ( $_[0]{_dequalify_idents} and ! ref $_[1] )
        ? $_[1] =~ / ([^\.]+) $ /x
        : $_[1];
 
@@ -103,7 +103,6 @@ sub _quote {
   if (my $alias = $column_info->{$col}{sql_alias}) {
      $col =~ s/[^\.]+$/$alias/;
   }
-
 
   $_[0]->next::method( $col );
 }
@@ -284,6 +283,7 @@ sub update {
 }
 
 sub delete {
+  local $_[0]->{FROM} = $_[1];
 
   shift->next::method(@_);
 }
