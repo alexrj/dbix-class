@@ -666,7 +666,7 @@ sub has_relationship_loaded {
   $self->throw_exception( "has_relationship_loaded needs a relationship name" )
     unless defined $rel;
 
-  return 0;
+  return exists $self->{related_resultsets}->{$rel};
 }
 
 =head2 get_columns
