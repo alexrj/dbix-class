@@ -27,7 +27,7 @@ for my $null_order (
   my $rs = $books_45_and_owners->search ({}, {order_by => $null_order });
   is_same_sql_bind(
       $rs->as_query,
-      '(SELECT id, source, owner, price, owner__id, owner__name
+      '(SELECT me.id, me.source, me.owner, me.price, owner__id, owner__name
           FROM (
             SELECT me.id, me.source, me.owner, me.price, owner.id AS owner__id, owner.name AS owner__name
               FROM books me
@@ -126,9 +126,9 @@ for my $ord_set (
 
   is_same_sql_bind(
     $books_45_and_owners->search ({}, {order_by => $ord_set->{order_by}})->as_query,
-    "(SELECT id, source, owner, price, owner__id, owner__name
+    "(SELECT me.id, me.source, me.owner, me.price, owner__id, owner__name
         FROM (
-          SELECT id, source, owner, price, owner__id, owner__name$o_sel
+          SELECT me.id, me.source, me.owner, me.price, owner__id, owner__name$o_sel
             FROM (
               SELECT me.id, me.source, me.owner, me.price, owner.id AS owner__id, owner.name AS owner__name$i_sel
                 FROM books me
@@ -153,9 +153,9 @@ is_same_sql_bind (
   $books_45_and_owners->search ({}, { group_by => 'title', order_by => 'title' })->as_query,
   '(SELECT me.id, me.source, me.owner, me.price, owner.id, owner.name
       FROM (
-        SELECT id, source, owner, price, ORDER__BY__1 AS title
+        SELECT me.id, me.source, me.owner, me.price, ORDER__BY__1 AS title
           FROM (
-            SELECT id, source, owner, price, ORDER__BY__1
+            SELECT me.id, me.source, me.owner, me.price, ORDER__BY__1
               FROM (
                 SELECT me.id, me.source, me.owner, me.price, title AS ORDER__BY__1
                   FROM books me
@@ -192,11 +192,10 @@ my $rs_selectas_top = $schema->resultset ('BooksInLibrary')->search ({}, {
 is_same_sql_bind( $rs_selectas_top->search({})->as_query,
                   '(SELECT
                       me.id, me.source, me.owner, me.title, me.price,
-                      owner.name AS owner_name
+                      owner.name
                     FROM books me
                     JOIN owners owner ON owner.id = me.owner
                     WHERE ( source = ? )
-                    ORDER BY me.id
                     FETCH FIRST 1 ROWS ONLY
                    )',
                   [ [ { sqlt_datatype => 'varchar', sqlt_size => 100, dbic_colname => 'source' }
@@ -217,5 +216,63 @@ is_same_sql_bind( $rs_selectas_top->search({})->as_query,
     'Newlines/spaces preserved in final sql',
   );
 }
+
+my $attr = {};
+my $rs_selectas_rel = $schema->resultset('BooksInLibrary')->search(undef, {
+  columns => { identifier => 'me.id' }, # people actually do that. BLEH!!! :)
+  rows => 4,
+  '+columns' => { bar => \['? * ?', [ $attr => 11 ], [ $attr => 12 ]], baz => \[ '?', [ $attr => 13 ]] },
+  order_by => [ \['? / ?', [ $attr => 1 ], [ $attr => 2 ]], \[ '?', [ $attr => 3 ]], 'me.id' ],
+  having => \[ '?', [ $attr => 21 ] ],
+});
+
+is_same_sql_bind(
+  $rs_selectas_rel->as_query,
+  '(
+    SELECT me.id, ? * ?, ?
+      FROM books me
+    WHERE ( source = ? )
+    HAVING ?
+    ORDER BY ? / ?, ?, me.id
+    FETCH FIRST 4 ROWS ONLY
+  )',
+  [
+    [ $attr => 11 ], [ $attr => 12 ], [ $attr => 13 ],
+    [ { sqlt_datatype => 'varchar', sqlt_size => 100, dbic_colname => 'source' } => 'Library' ],
+    [ $attr => 21 ],
+    [ $attr => 1 ], [ $attr => 2 ], [ $attr => 3 ],
+  ],
+  'Pagination with complex select/order works',
+);
+
+is_same_sql_bind(
+  $rs_selectas_rel->search({}, { offset => 3 })->as_query,
+  '(
+    SELECT me.id, bar, baz
+      FROM (
+        SELECT me.id, bar, baz, ORDER__BY__1, ORDER__BY__2
+          FROM (
+            SELECT me.id, ? * ? AS bar, ? AS baz, ? / ? AS ORDER__BY__1, ? AS ORDER__BY__2
+              FROM books me
+            WHERE ( source = ? )
+            HAVING ?
+            ORDER BY ? / ?, ?, me.id
+            FETCH FIRST 7 ROWS ONLY
+          ) me
+        ORDER BY ORDER__BY__1 DESC, ORDER__BY__2 DESC, me.id DESC
+        FETCH FIRST 4 ROWS ONLY
+      ) me
+    ORDER BY ORDER__BY__1, ORDER__BY__2, me.id
+    FETCH FIRST 4 ROWS ONLY
+  )',
+  [
+    [ $attr => 11 ], [ $attr => 12 ], [ $attr => 13 ],
+    [ $attr => 1 ], [ $attr => 2 ], [ $attr => 3 ],
+    [ { sqlt_datatype => 'varchar', sqlt_size => 100, dbic_colname => 'source' } => 'Library' ],
+    [ $attr => 21 ],
+    [ $attr => 1 ], [ $attr => 2 ], [ $attr => 3 ],
+  ],
+  'Offset pagination with complex select/order works',
+);
 
 done_testing;

@@ -323,7 +323,7 @@ do_creates($dbh);
     is_same_sql_bind (
       $rs->as_query,
       '(
-        SELECT artistid, name, rank, charfield, parentid
+        SELECT me.artistid, me.name, me.rank, me.charfield, me.parentid
           FROM (
             SELECT me.artistid, me.name, me.rank, me.charfield, me.parentid
               FROM artist me
@@ -350,7 +350,7 @@ do_creates($dbh);
       '(
         SELECT COUNT( * )
           FROM (
-            SELECT artistid
+            SELECT me.artistid
               FROM (
                 SELECT me.artistid
                   FROM artist me

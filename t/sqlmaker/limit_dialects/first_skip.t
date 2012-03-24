@@ -148,4 +148,34 @@ is_same_sql_bind(
 
 }
 
+my $attr = {};
+$rs_selectas_rel = $schema->resultset('BooksInLibrary')->search(undef, {
+  columns => 'me.id',
+  offset => 3,
+  rows => 4,
+  '+columns' => { bar => \['? * ?', [ $attr => 11 ], [ $attr => 12 ]], baz => \[ '?', [ $attr => 13 ]] },
+  order_by => [ \['? / ?', [ $attr => 1 ], [ $attr => 2 ]], \[ '?', [ $attr => 3 ]] ],
+  having => \[ '?', [ $attr => 21 ] ],
+});
+
+is_same_sql_bind(
+  $rs_selectas_rel->as_query,
+  '(
+    SELECT FIRST ? SKIP ? [me].[id], ? * ?, ?
+      FROM [books] [me]
+    WHERE [source] = ?
+    HAVING ?
+    ORDER BY ? / ?, ?
+  )',
+  [
+    [ {%$LIMIT} => 4 ],
+    [ {%$OFFSET} => 3 ],
+    [ $attr => 11 ], [ $attr => 12 ], [ $attr => 13 ],
+    [ { sqlt_datatype => 'varchar', sqlt_size => 100, dbic_colname => 'source' } => 'Library' ],
+    [ $attr => 21 ],
+    [ $attr => 1 ], [ $attr => 2 ], [ $attr => 3 ],
+  ],
+  'Pagination with sub-query in ORDER BY works'
+);
+
 done_testing;

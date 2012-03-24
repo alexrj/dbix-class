@@ -100,7 +100,11 @@ sub _RowNumberOver {
 
   # make up an order if none exists
   my $requested_order = (delete $rs_attrs->{order_by}) || $self->_rno_default_order;
+
+  # the order binds (if any) will need to go at the end the entire inner select
+  local $self->{order_bind};
   my $rno_ord = $self->_order_by ($requested_order);
+  push @{$self->{select_bind}}, @{$self->{order_bind}};
 
   # this is the order supplement magic
   my $mid_sel = $sq_attrs->{selection_outer};
@@ -118,7 +122,7 @@ sub _RowNumberOver {
 
   # and this is order re-alias magic
   for ($sq_attrs->{order_supplement}, $sq_attrs->{outer_renames}) {
-    for my $col (keys %$_) {
+    for my $col (sort { length $b <=> length $a } keys %$_) {
       my $re_col = quotemeta ($col);
       $rno_ord =~ s/$re_col/$_->{$col}/;
     }
@@ -312,88 +316,94 @@ sub _prep_for_skimming_limit {
   $sq_attrs->{order_by_requested} = $self->_order_by ($requested_order);
   $sq_attrs->{grpby_having} = $self->_parse_rs_attrs ($rs_attrs);
 
-  # make up an order unless supplied or sanity check what we are given
-  my $inner_order;
-  if ($sq_attrs->{order_by_requested}) {
-    $self->throw_exception (
-      'Unable to safely perform "skimming type" limit with supplied unstable order criteria'
-    ) unless $rs_attrs->{_rsroot_rsrc}->schema->storage->_order_by_is_stable(
-      $rs_attrs->{from},
-      $requested_order
-    );
-
-    $inner_order = $requested_order;
+  # without an offset things are easy
+  if (! $rs_attrs->{offset}) {
+    $sq_attrs->{order_by_inner} = $sq_attrs->{order_by_requested};
   }
   else {
-    $inner_order = [ map
-      { "$rs_attrs->{alias}.$_" }
-      ( @{
-        $rs_attrs->{_rsroot_rsrc}->_identifying_column_set
-          ||
-        $self->throw_exception(sprintf(
-          'Unable to auto-construct stable order criteria for "skimming type" limit '
-        . "dialect based on source '%s'", $rs_attrs->{_rsroot_rsrc}->name) );
-      } )
-    ];
-  }
+    # localise as we already have all the bind values we need
+    local $self->{order_bind};
 
-  # localise as we already have all the bind values we need
-  local $self->{order_bind};
-
-  $sq_attrs->{order_by_inner} = $self->_order_by ($inner_order);
-
-  my @out_chunks;
-  for my $ch ($self->_order_by_chunks ($inner_order)) {
-    $ch = $ch->[0] if ref $ch eq 'ARRAY';
-
-    $ch =~ s/\s+ ( ASC|DESC ) \s* $//ix;
-    my $dir = uc ($1||'ASC');
-
-    push @out_chunks, \join (' ', $ch, $dir eq 'ASC' ? 'DESC' : 'ASC' );
-  }
-
-  $sq_attrs->{quoted_rs_alias} = $self->_quote ($rs_attrs->{alias});
-  $sq_attrs->{order_by_middle} = $self->_order_by (\@out_chunks);
-  $sq_attrs->{selection_middle} = $sq_attrs->{selection_outer};
-
-  # this is the order supplement magic
-  if (my $extra_order_sel = $sq_attrs->{order_supplement}) {
-    for my $extra_col (sort
-      { $extra_order_sel->{$a} cmp $extra_order_sel->{$b} }
-      keys %$extra_order_sel
-    ) {
-      $sq_attrs->{selection_inner} .= sprintf (', %s AS %s',
-        $extra_col,
-        $extra_order_sel->{$extra_col},
+    # make up an order unless supplied or sanity check what we are given
+    my $inner_order;
+    if ($sq_attrs->{order_by_requested}) {
+      $self->throw_exception (
+        'Unable to safely perform "skimming type" limit with supplied unstable order criteria'
+      ) unless $rs_attrs->{_rsroot_rsrc}->schema->storage->_order_by_is_stable(
+        $rs_attrs->{from},
+        $requested_order
       );
 
-      $sq_attrs->{selection_middle} .= ', ' . $extra_order_sel->{$extra_col};
+      $inner_order = $requested_order;
+    }
+    else {
+      $inner_order = [ map
+        { "$rs_attrs->{alias}.$_" }
+        ( @{
+          $rs_attrs->{_rsroot_rsrc}->_identifying_column_set
+            ||
+          $self->throw_exception(sprintf(
+            'Unable to auto-construct stable order criteria for "skimming type" limit '
+          . "dialect based on source '%s'", $rs_attrs->{_rsroot_rsrc}->name) );
+        } )
+      ];
     }
 
-    # Whatever order bindvals there are, they will be realiased and
-    # reselected, and need to show up at end of the initial inner select
-    push @{$self->{select_bind}}, @{$self->{order_bind}};
+    $sq_attrs->{order_by_inner} = $self->_order_by ($inner_order);
 
-    # if this is a part of something bigger, we need to add back all
-    # the extra order_by's, as they may be relied upon by the outside
-    # of a prefetch or something
-    if ($rs_attrs->{_is_internal_subuery}) {
-      $sq_attrs->{selection_outer} .= sprintf ", $extra_order_sel->{$_} AS $_"
-        for sort
-          { $extra_order_sel->{$a} cmp $extra_order_sel->{$b} }
-            grep { $_ !~ /[^\w\-]/ }  # ignore functions
-            keys %$extra_order_sel
-      ;
-    }
-  }
+    my @out_chunks;
+    for my $ch ($self->_order_by_chunks ($inner_order)) {
+      $ch = $ch->[0] if ref $ch eq 'ARRAY';
 
-  # and this is order re-alias magic
-  for my $map ($sq_attrs->{order_supplement}, $sq_attrs->{outer_renames}) {
-    for my $col (sort { $map->{$a} cmp $map->{$b} } keys %{$map||{}}) {
-      my $re_col = quotemeta ($col);
-      $_ =~ s/$re_col/$map->{$col}/
-        for ($sq_attrs->{order_by_middle}, $sq_attrs->{order_by_requested});
+      $ch =~ s/\s+ ( ASC|DESC ) \s* $//ix;
+      my $dir = uc ($1||'ASC');
+      push @out_chunks, \join (' ', $ch, $dir eq 'ASC' ? 'DESC' : 'ASC' );
     }
+
+    $sq_attrs->{order_by_middle} = $self->_order_by (\@out_chunks);
+
+    # this is the order supplement magic
+    $sq_attrs->{selection_middle} = $sq_attrs->{selection_outer};
+    if (my $extra_order_sel = $sq_attrs->{order_supplement}) {
+      for my $extra_col (sort
+        { $extra_order_sel->{$a} cmp $extra_order_sel->{$b} }
+        keys %$extra_order_sel
+      ) {
+        $sq_attrs->{selection_inner} .= sprintf (', %s AS %s',
+          $extra_col,
+          $extra_order_sel->{$extra_col},
+        );
+
+        $sq_attrs->{selection_middle} .= ', ' . $extra_order_sel->{$extra_col};
+      }
+
+      # Whatever order bindvals there are, they will be realiased and
+      # reselected, and need to show up at end of the initial inner select
+      push @{$self->{select_bind}}, @{$self->{order_bind}};
+
+      # if this is a part of something bigger, we need to add back all
+      # the extra order_by's, as they may be relied upon by the outside
+      # of a prefetch or something
+      if ($rs_attrs->{_is_internal_subuery}) {
+        $sq_attrs->{selection_outer} .= sprintf ", $extra_order_sel->{$_} AS $_"
+          for sort
+            { $extra_order_sel->{$a} cmp $extra_order_sel->{$b} }
+              grep { $_ !~ /[^\w\-]/ }  # ignore functions
+              keys %$extra_order_sel
+        ;
+      }
+    }
+
+    # and this is order re-alias magic
+    for my $map ($sq_attrs->{order_supplement}, $sq_attrs->{outer_renames}) {
+      for my $col (sort { length $b <=> length $a or $_->{$a} cmp $_->{$b} } keys %{$map||{}}) {
+        my $re_col = quotemeta ($col);
+        $_ =~ s/$re_col/$map->{$col}/
+          for ($sq_attrs->{order_by_middle}, $sq_attrs->{order_by_requested});
+      }
+    }
+
+    $sq_attrs->{quoted_rs_alias} = $self->_quote ($rs_attrs->{alias});
   }
 
   $sq_attrs;
@@ -425,7 +435,7 @@ sub _Top {
 
   $sql = sprintf ('SELECT TOP %u %s %s %s %s',
     $rows + ($offset||0),
-    $lim->{selection_inner},
+    $offset ? $lim->{selection_inner} : $lim->{selection_original},
     $lim->{query_leftover},
     $lim->{grpby_having},
     $lim->{order_by_inner},
@@ -480,7 +490,7 @@ sub _FetchFirst {
   my $lim = $self->_prep_for_skimming_limit($sql, $rs_attrs);
 
   $sql = sprintf ('SELECT %s %s %s %s FETCH FIRST %u ROWS ONLY',
-    $lim->{selection_inner},
+    $offset ? $lim->{selection_inner} : $lim->{selection_original},
     $lim->{query_leftover},
     $lim->{grpby_having},
     $lim->{order_by_inner},
@@ -560,6 +570,10 @@ sub _GenericSubQ {
   my $root_rsrc = $rs_attrs->{_rsroot_rsrc};
   my $root_tbl_name = $root_rsrc->name;
 
+  # we don't support binds in order_by anyhow
+  # localize in case we blow out of the generator due to this
+  local $self->{order_bind};
+
   my ($first_order_by) = do {
     local $self->{quote_char};
     map { ref $_ ? $_->[0] : $_ } $self->_order_by_chunks ($rs_attrs->{order_by})
@@ -584,7 +598,12 @@ sub _GenericSubQ {
     "Generic Subquery Limit first order criteria '$first_ord_col' must be unique"
   ) unless $root_rsrc->_identifying_column_set([$first_ord_col]);
 
-  my $sq_attrs = $self->_subqueried_limit_attrs ($sql, $rs_attrs);
+  my $sq_attrs = do {
+    # perform the mangling only using the very first order crietria
+    # (the one we care about)
+    local $rs_attrs->{order_by} = $first_order_by;
+    $self->_subqueried_limit_attrs ($sql, $rs_attrs);
+  };
 
   my $cmp_op = $direction eq 'desc' ? '>' : '<';
   my $count_tbl_alias = 'rownum__emulation';
@@ -679,6 +698,7 @@ sub _subqueried_limit_attrs {
     my $sql_alias = (ref $s) eq 'HASH' ? $s->{-as} : undef;
 
     push @sel, {
+      arg => $s,
       sql => $sql_sel,
       unquoted_sql => do {
         local $self->{quote_char};
@@ -693,7 +713,9 @@ sub _subqueried_limit_attrs {
       ,
     };
 
-    $in_sel_index->{$sql_sel}++;
+    # anything with a placeholder in it needs re-selection
+    $in_sel_index->{$sql_sel}++ unless $sql_sel =~ / (?: ^ | \W ) \? (?: \W | $ ) /x;
+
     $in_sel_index->{$self->_quote ($sql_alias)}++ if $sql_alias;
 
     # record unqualified versions too, so we do not have
@@ -709,9 +731,13 @@ sub _subqueried_limit_attrs {
   # unless we are dealing with the current source alias
   # (which will transcend the subqueries as it is necessary
   # for possible further chaining)
+  # same for anything we do not recognize
   my ($sel, $renamed);
   for my $node (@sel) {
+    push @{$sel->{original}}, $node->{sql};
     if (
+      ! $in_sel_index->{$node->{sql}}
+        or
       $node->{as} =~ / (?<! ^ $re_alias ) \. /x
         or
       $node->{unquoted_sql} =~ / (?<! ^ $re_alias ) $re_sep /x
@@ -724,7 +750,7 @@ sub _subqueried_limit_attrs {
     }
     else {
       push @{$sel->{inner}}, $node->{sql};
-      push @{$sel->{outer}}, $self->_quote ($node->{as});
+      push @{$sel->{outer}}, $self->_quote (ref $node->{arg} ? $node->{as} : $node->{arg});
     }
   }
 

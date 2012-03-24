@@ -244,7 +244,7 @@ my $rs_selectas_rel = $s->resultset('BooksInLibrary')->search( { -exists => $sub
 is_same_sql_bind(
   $rs_selectas_rel->as_query,
   '(
-    SELECT id, owner FROM (
+    SELECT me.id, me.owner FROM (
       SELECT me.id, me.owner  FROM books me WHERE ( ( (EXISTS (SELECT COUNT( * ) FROM owners owner WHERE ( books.owner = owner.id ))) AND source = ? ) )
     ) me
     WHERE ROWNUM <= ?
@@ -257,5 +257,39 @@ is_same_sql_bind(
 );
 
 }
+
+my $attr = {};
+my $rs_selectas_rel = $s->resultset('BooksInLibrary')->search(undef, {
+  columns => 'me.id',
+  offset => 3,
+  rows => 4,
+  '+columns' => { bar => \['? * ?', [ $attr => 11 ], [ $attr => 12 ]], baz => \[ '?', [ $attr => 13 ]] },
+  order_by => [ \['? / ?', [ $attr => 1 ], [ $attr => 2 ]], \[ '?', [ $attr => 3 ]] ],
+  having => \[ '?', [ $attr => 21 ] ],
+});
+
+is_same_sql_bind(
+  $rs_selectas_rel->as_query,
+  '(
+    SELECT me.id, bar, baz FROM (
+      SELECT me.id, bar, baz, ROWNUM rownum__index FROM (
+        SELECT me.id, ? * ? AS bar, ? as baz
+          FROM books me
+        WHERE ( source = ? )
+        HAVING ?
+        ORDER BY ? / ?, ?
+      ) me
+    ) me WHERE rownum__index BETWEEN ? AND ?
+  )',
+  [
+    [ $attr => 11 ], [ $attr => 12 ], [ $attr => 13 ],
+    [ { sqlt_datatype => 'varchar', sqlt_size => 100, dbic_colname => 'source' } => 'Library' ],
+    [ $attr => 21 ],
+    [ $attr => 1 ], [ $attr => 2 ], [ $attr => 3 ],
+    [ {%$OFFSET} => 4 ],
+    [ {%$ROWS} => 7 ],
+  ],
+  'Pagination with sub-query in ORDER BY works'
+);
 
 done_testing;

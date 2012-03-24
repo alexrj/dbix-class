@@ -30,7 +30,7 @@ for my $null_order (
   is_same_sql_bind(
       $rs->as_query,
       '(SELECT TOP 2
-            id, source, owner, price, owner__id, owner__name
+            me.id, me.source, me.owner, me.price, owner__id, owner__name
           FROM (
             SELECT TOP 5
                 me.id, me.source, me.owner, me.price, owner.id AS owner__id, owner.name AS owner__name
@@ -167,10 +167,10 @@ for my $ord_set (
   is_same_sql_bind(
     $books_45_and_owners->search ({}, {order_by => $ord_set->{order_by}})->as_query,
     "(SELECT TOP 2
-          id, source, owner, price, owner__id, owner__name
+          me.id, me.source, me.owner, me.price, owner__id, owner__name
         FROM (
           SELECT TOP 2
-              id, source, owner, price, owner__id, owner__name$o_sel
+              me.id, me.source, me.owner, me.price, owner__id, owner__name$o_sel
             FROM (
               SELECT TOP 5
                   me.id, me.source, me.owner, me.price, owner.id AS owner__id, owner.name AS owner__name$i_sel
@@ -193,10 +193,10 @@ is_same_sql_bind (
   $books_45_and_owners->search ({}, { group_by => 'title', order_by => 'title' })->as_query,
   '(SELECT me.id, me.source, me.owner, me.price, owner.id, owner.name
       FROM (
-        SELECT TOP 2 id, source, owner, price, ORDER__BY__1 AS title
+        SELECT TOP 2 me.id, me.source, me.owner, me.price, ORDER__BY__1 AS title
           FROM (
             SELECT TOP 2
-                id, source, owner, price, ORDER__BY__1
+                me.id, me.source, me.owner, me.price, ORDER__BY__1
               FROM (
                 SELECT TOP 5
                     me.id, me.source, me.owner, me.price, title AS ORDER__BY__1
@@ -231,11 +231,10 @@ my $rs_selectas_top = $schema->resultset ('BooksInLibrary')->search ({}, {
 is_same_sql_bind( $rs_selectas_top->search({})->as_query,
                   '(SELECT
                       TOP 1 me.id, me.source, me.owner, me.title, me.price,
-                      owner.name AS owner_name
+                      owner.name
                     FROM books me
                     JOIN owners owner ON owner.id = me.owner
                     WHERE ( source = ? )
-                    ORDER BY me.id
                   )',
                   [ [ { sqlt_datatype => 'varchar', sqlt_size => 100, dbic_colname => 'source' }
                     => 'Library' ] ],
@@ -265,7 +264,7 @@ my $rs_selectas_rel = $schema->resultset('BooksInLibrary')->search( { -exists =>
 
 is_same_sql_bind(
   $rs_selectas_rel->as_query,
-  '(SELECT TOP 1 me.id, me.owner  FROM books me WHERE ( ( (EXISTS (SELECT COUNT( * ) FROM owners owner WHERE ( books.owner = owner.id ))) AND source = ? ) )   ORDER BY me.id)',
+  '(SELECT TOP 1 me.id, me.owner  FROM books me WHERE ( ( (EXISTS (SELECT COUNT( * ) FROM owners owner WHERE ( books.owner = owner.id ))) AND source = ? ) ) )',
   [
     [ { sqlt_datatype => 'varchar', sqlt_size => 100, dbic_colname => 'source' } => 'Library' ],
   ],
@@ -273,5 +272,42 @@ is_same_sql_bind(
 );
 
 }
+
+my $attr = {};
+my $rs_selectas_rel = $schema->resultset('BooksInLibrary')->search(undef, {
+  columns => 'me.id',
+  offset => 3,
+  rows => 4,
+  '+columns' => { bar => \['? * ?', [ $attr => 11 ], [ $attr => 12 ]], baz => \[ '?', [ $attr => 13 ]] },
+  order_by => [ \['? / ?', [ $attr => 1 ], [ $attr => 2 ]], \[ '?', [ $attr => 3 ]], 'me.id' ],
+  having => \[ '?', [ $attr => 21 ] ],
+});
+
+is_same_sql_bind(
+  $rs_selectas_rel->as_query,
+  '(
+    SELECT TOP 4 me.id, bar, baz
+      FROM (
+        SELECT TOP 4 me.id, bar, baz, ORDER__BY__1, ORDER__BY__2
+          FROM (
+            SELECT TOP 7 me.id, ? * ? AS bar, ? AS baz, ? / ? AS ORDER__BY__1, ? AS ORDER__BY__2
+              FROM books me
+            WHERE ( source = ? )
+            HAVING ?
+            ORDER BY ? / ?, ?, me.id
+          ) me
+        ORDER BY ORDER__BY__1 DESC, ORDER__BY__2 DESC, me.id DESC
+      ) me
+    ORDER BY ORDER__BY__1, ORDER__BY__2, me.id
+  )',
+  [
+    [ $attr => 11 ], [ $attr => 12 ], [ $attr => 13 ],
+    [ $attr => 1 ], [ $attr => 2 ], [ $attr => 3 ],
+    [ { sqlt_datatype => 'varchar', sqlt_size => 100, dbic_colname => 'source' } => 'Library' ],
+    [ $attr => 21 ],
+    [ $attr => 1 ], [ $attr => 2 ], [ $attr => 3 ],
+  ],
+  'Pagination with sub-query in ORDER BY works'
+);
 
 done_testing;
