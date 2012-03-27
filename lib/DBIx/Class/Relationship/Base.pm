@@ -394,7 +394,7 @@ sub register_relationship { }
 Returns a L<DBIx::Class::ResultSet> for the relationship named
 $relationship_name.
 
-=head2 $rel
+=head2 $relationship_accessor
 
 =over 4
 
@@ -407,7 +407,7 @@ $relationship_name.
   # These pairs do the same thing
   $row = $cd->related_resultset('artist')->single;  # has_one relationship
   $row = $cd->artist;
-  
+
   $rs = $cd->related_resultset('tracks');           # has_many relationship
   $rs = $cd->tracks;
 

@@ -30,24 +30,6 @@ DBIx::Class::Core - Core set of DBIx::Class modules
 This class just inherits from the various modules that make up the
 L<DBIx::Class> core features.  You almost certainly want these.
 
-The core modules currently are:
-
-=over 4
-
-=item L<DBIx::Class::InflateColumn>
-
-=item L<DBIx::Class::Relationship> (See also L<DBIx::Class::Relationship::Base>)
-
-=item L<DBIx::Class::PK::Auto>
-
-=item L<DBIx::Class::PK>
-
-=item L<DBIx::Class::Row>
-
-=item L<DBIx::Class::ResultSourceProxy::Table> (See also L<DBIx::Class::ResultSource>)
-
-=back
-
 =head1 AUTHORS
 
 Matt S. Trout <mst@shadowcatsystems.co.uk>
