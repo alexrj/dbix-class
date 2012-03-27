@@ -411,7 +411,7 @@ $relationship_name.
   $rs = $cd->related_resultset('tracks');           # has_many relationship
   $rs = $cd->tracks;
 
-This is a friendlier helper method to transverse through the
+This is a friendlier helper method to traverse through the
 relationship, based on the L</accessor> name given in the
 relationship definition.
 

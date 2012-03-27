@@ -69,7 +69,7 @@ list of those methods, look at L<DBIx::Class::Core/INHERITED METHODS>.
 
 =item Arguments: \%attrs or \%colsandvalues
 
-=item Returns: A DBIC::Row object
+=item Returns: A L<DBIx::Class::Row> object
 
 =back
 
@@ -300,9 +300,11 @@ call L<get|DBIx::Class::InflateColumn/get_inflated_column>/L<set_inflated_column
 as necessary.  Only call the basic L<get|/get_column>/L<set_column|/set_column>
 methods if you absolutely need the raw value from storage.
 
-The actual method name is based on the L<accessor|DBIx::Class::ResultSource/accessor>
-name given in the table definition.  Like L</set_column>, this will
-not store the data until L</insert> or L</update> is called on the row.
+The actual method name is based on the
+L<accessor|DBIx::Class::ResultSource/accessor> name given in the L<Result
+class|DBIx::Class::Manual::Glossary/Result_class>. Like L</set_column>, this
+will not store the data in the database until L</insert> or L</update> is called
+on the row.
 
 =head2 insert
 
@@ -873,7 +875,7 @@ the column is marked as dirty for when you next call L</update>.
 If passed an object or reference as a value, this method will happily
 attempt to store it, and a later L</insert> or L</update> will try and
 stringify/numify as appropriate. To set an object to be deflated
-instead, see L</set_inflated_columns>, or better yet, use L</$col>.
+instead, see L</set_inflated_columns>, or better yet, use L</$column_accessor>.
 
 =cut
 
